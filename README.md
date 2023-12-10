@@ -1,3 +1,15 @@
+# Work In Progress
+## Goals for this fork:
+- ESP-IDF component only
+- Signaling agnostic - remove CoreMQTT and CoreHTTP dependencies
+- Pluggable Signaling  
+- No blocking STUN calls
+- Trheaded Tricke ICE 
+. Unified plan SDP semantic
+
+----
+# Original repository
+
 # libpeer - Portable WebRTC Library for IoT/Embedded Device
 
 ![pear-ci](https://github.com/sepfy/pear/actions/workflows/pear-ci.yml/badge.svg)

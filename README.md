@@ -4,7 +4,8 @@
 - Signaling agnostic - remove CoreMQTT and CoreHTTP dependencies
 - Pluggable Signaling  
 - No blocking STUN calls
-- Trheaded Tricke ICE 
+- Trheaded Trickle ICE
+- OnNegotiationNeeded 
 . Unified plan SDP semantic
 
 ----

@@ -1,21 +1,22 @@
-#include <stdio.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_log.h"
 
 #include "esp_camera.h"
 #include "esp_timer.h"
 
 #include "peer_connection.h"
 
-extern PeerConnection *g_pc;
+extern PeerConnection* g_pc;
 extern int gDataChannelOpened;
 extern PeerConnectionState eState;
+extern SemaphoreHandle_t xSemaphore;
 extern int get_timestamp();
-static const char *TAG = "Camera";
+static const char* TAG = "Camera";
 
 #if defined(CONFIG_ESP32S3_XIAO_SENSE)
 #define CAM_PIN_PWDN -1
@@ -51,7 +52,24 @@ static const char *TAG = "Camera";
 #define CAM_PIN_VSYNC 25
 #define CAM_PIN_HREF 26
 #define CAM_PIN_PCLK 21
-#else // ESP32-EYE
+#elif defined(CONFIG_ESP32S3_EYE)
+#define CAM_PIN_PWDN -1
+#define CAM_PIN_RESET -1
+#define CAM_PIN_XCLK 15
+#define CAM_PIN_SIOD 4
+#define CAM_PIN_SIOC 5
+#define CAM_PIN_D7 16
+#define CAM_PIN_D6 17
+#define CAM_PIN_D5 18
+#define CAM_PIN_D4 12
+#define CAM_PIN_D3 10
+#define CAM_PIN_D2 8
+#define CAM_PIN_D1 9
+#define CAM_PIN_D0 11
+#define CAM_PIN_VSYNC 6
+#define CAM_PIN_HREF 7
+#define CAM_PIN_PCLK 13
+#else  // ESP32-EYE
 #define CAM_PIN_PWDN -1
 #define CAM_PIN_RESET -1
 #define CAM_PIN_XCLK 4
@@ -88,58 +106,54 @@ static camera_config_t camera_config = {
     .pin_href = CAM_PIN_HREF,
     .pin_sccb_sda = CAM_PIN_SIOD,
     .pin_sccb_scl = CAM_PIN_SIOC,
-    .pin_pwdn  = CAM_PIN_PWDN,
+    .pin_pwdn = CAM_PIN_PWDN,
     .pin_reset = CAM_PIN_RESET,
     .xclk_freq_hz = 20000000,
     .pixel_format = PIXFORMAT_JPEG,
     .frame_size = FRAMESIZE_VGA,
     .jpeg_quality = 10,
     .fb_count = 2,
-    .grab_mode = CAMERA_GRAB_WHEN_EMPTY
-};
+    .grab_mode = CAMERA_GRAB_WHEN_EMPTY};
 
-esp_err_t camera_init(){
+esp_err_t camera_init() {
+  // initialize the camera
+  esp_err_t err = esp_camera_init(&camera_config);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Camera Init Failed");
+    return err;
+  }
 
-    //initialize the camera
-    esp_err_t err = esp_camera_init(&camera_config);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Camera Init Failed");
-        return err;
-    }
-
-    return ESP_OK;
+  return ESP_OK;
 }
 
-void camera_task(void *pvParameters) {
-
+void camera_task(void* pvParameters) {
   static int fps = 0;
   static int64_t last_time;
   int64_t curr_time;
 
-  camera_fb_t * fb = NULL;
+  camera_fb_t* fb = NULL;
 
   ESP_LOGI(TAG, "Camera Task Started");
 
   last_time = get_timestamp();
 
-  for(;;) {
-
+  for (;;) {
     if ((eState == PEER_CONNECTION_COMPLETED) && gDataChannelOpened) {
-
       fb = esp_camera_fb_get();
 
       if (!fb) {
-
         ESP_LOGE(TAG, "Camera capture failed");
       }
 
-      //ESP_LOGI(TAG, "Camera captured. size=%zu, timestamp=%llu", fb->len, fb->timestamp);
-      peer_connection_datachannel_send(g_pc, (char*)fb->buf, fb->len);
+      // ESP_LOGI(TAG, "Camera captured. size=%zu, timestamp=%llu", fb->len, fb->timestamp);
+      if (xSemaphoreTake(xSemaphore, portMAX_DELAY)) {
+        peer_connection_datachannel_send(g_pc, (char*)fb->buf, fb->len);
+        xSemaphoreGive(xSemaphore);
+      }
 
       fps++;
 
       if ((fps % 100) == 0) {
-
         curr_time = get_timestamp();
         ESP_LOGI(TAG, "Camera FPS=%.2f", 1000.0f / (float)(curr_time - last_time) * 100.0f);
         last_time = curr_time;
@@ -148,9 +162,6 @@ void camera_task(void *pvParameters) {
       esp_camera_fb_return(fb);
     }
 
-    // 10 FPS
-    vTaskDelay(pdMS_TO_TICKS(1000/10));
+    vTaskDelay(pdMS_TO_TICKS(1000 / 20));
   }
-
 }
-

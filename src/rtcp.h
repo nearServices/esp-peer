@@ -1,8 +1,14 @@
 #ifndef RTCP_H_
 #define RTCP_H_
 
-#include <stdint.h>
+#ifdef __BYTE_ORDER
+#define __BIG_ENDIAN 4321
+#define __LITTLE_ENDIAN 1234
+#elif __APPLE__
+#include <machine/endian.h>
+#else
 #include <endian.h>
+#endif
 
 typedef enum RtcpType {
 
@@ -19,24 +25,22 @@ typedef enum RtcpType {
 } RtcpType;
 
 typedef struct RtcpHeader {
-
 #if __BYTE_ORDER == __BIG_ENDIAN
-  uint16_t version:2;
-  uint16_t padding:1;
-  uint16_t rc:5;
-  uint16_t type:8;
+  uint16_t version : 2;
+  uint16_t padding : 1;
+  uint16_t rc : 5;
+  uint16_t type : 8;
 #elif __BYTE_ORDER == __LITTLE_ENDIAN
-  uint16_t rc:5;
-  uint16_t padding:1;
-  uint16_t version:2;
-  uint16_t type:8;
+  uint16_t rc : 5;
+  uint16_t padding : 1;
+  uint16_t version : 2;
+  uint16_t type : 8;
 #endif
-  uint16_t length:16;
+  uint16_t length : 16;
 
 } RtcpHeader;
 
 typedef struct RtcpReportBlock {
-
   uint32_t ssrc;
   uint32_t flcnpl;
   uint32_t ehsnr;
@@ -46,9 +50,7 @@ typedef struct RtcpReportBlock {
 
 } RtcpReportBlock;
 
-
 typedef struct RtcpRr {
-
   RtcpHeader header;
   uint32_t ssrc;
   RtcpReportBlock report_block[1];
@@ -56,14 +58,12 @@ typedef struct RtcpRr {
 } RtcpRr;
 
 typedef struct RtcpFir {
-
   uint32_t ssrc;
   uint32_t seqnr;
 
 } RtcpFir;
 
 typedef struct RtcpFb {
-
   RtcpHeader header;
   uint32_t ssrc;
   uint32_t media;
@@ -71,12 +71,12 @@ typedef struct RtcpFb {
 
 } RtcpFb;
 
-int rtcp_probe(uint8_t *packet, size_t size);
+int rtcp_probe(uint8_t* packet, size_t size);
 
-int rtcp_get_pli(uint8_t *packet, int len, uint32_t ssrc);
+int rtcp_get_pli(uint8_t* packet, int len, uint32_t ssrc);
 
-int rtcp_get_fir(uint8_t *packet, int len, int *seqnr);
+int rtcp_get_fir(uint8_t* packet, int len, int* seqnr);
 
-RtcpRr rtcp_parse_rr(uint8_t *packet);
+RtcpRr rtcp_parse_rr(uint8_t* packet);
 
-#endif // RTCP_H_
+#endif  // RTCP_H_

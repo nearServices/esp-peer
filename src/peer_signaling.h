@@ -7,15 +7,18 @@
 extern "C" {
 #endif
 
-int peer_signaling_join_channel(const char *client_id, PeerConnection *pc);
+#ifndef DISABLE_PEER_SIGNALING
 
-void peer_signaling_leave_channel();
+int peer_signaling_connect(const char* url, const char* token, PeerConnection* pc);
+
+void peer_signaling_disconnect();
 
 int peer_signaling_loop();
 
+#endif  // DISABLE_PEER_SIGNALING
+
 #ifdef __cplusplus
-} 
+}
 #endif
 
-#endif //PEER_SIGNALING_H_
-
+#endif  // PEER_SIGNALING_H_

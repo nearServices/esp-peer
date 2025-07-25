@@ -4,19 +4,27 @@
 #include "config.h"
 #include "dtls_srtp.h"
 #include "utils.h"
-#include "buffer.h"
-
-#ifndef HAVE_USRSCTP
 
 typedef enum DecpMsgType {
-  
+
   DATA_CHANNEL_OPEN = 0x03,
   DATA_CHANNEL_ACK = 0x02,
 
 } DecpMsgType;
 
-typedef struct SctpChunkParam {
+typedef enum DataChannelPpid {
 
+  DATA_CHANNEL_PPID_CONTROL = 50,
+  DATA_CHANNEL_PPID_DOMSTRING = 51,
+  DATA_CHANNEL_PPID_BINARY_PARTIAL = 52,
+  DATA_CHANNEL_PPID_BINARY = 53,
+  DATA_CHANNEL_PPID_DOMSTRING_PARTIAL = 54
+
+} DataChannelPpid;
+
+#if !CONFIG_USE_USRSCTP
+
+typedef struct SctpChunkParam {
   uint16_t type;
   uint16_t length;
   uint8_t value[0];
@@ -34,10 +42,10 @@ typedef enum SctpHeaderType {
   SCTP_DATA = 0,
   SCTP_INIT = 1,
   SCTP_INIT_ACK = 2,
-  SCTP_SACK = 3, 
+  SCTP_SACK = 3,
   SCTP_HEARTBEAT = 4,
   SCTP_HEARTBEAT_ACK = 5,
-  SCTP_ABORT = 6, 
+  SCTP_ABORT = 6,
   SCTP_SHUTDOWN = 7,
   SCTP_SHUTDOWN_ACK = 8,
   SCTP_ERROR = 9,
@@ -46,7 +54,7 @@ typedef enum SctpHeaderType {
   SCTP_ECNE = 12,
   SCTP_CWR = 13,
   SCTP_SHUTDOWN_COMPLETE = 14,
-  SCTP_AUTH = 15, 
+  SCTP_AUTH = 15,
   SCTP_ASCONF_ACK = 128,
   SCTP_ASCONF = 130,
   SCTP_FORWARD_TSN = 192
@@ -54,7 +62,6 @@ typedef enum SctpHeaderType {
 } SctpHeaderType;
 
 typedef struct SctpChunkCommon {
-
   uint8_t type;
   uint8_t flags;
   uint16_t length;
@@ -62,7 +69,6 @@ typedef struct SctpChunkCommon {
 } SctpChunkCommon;
 
 typedef struct SctpForwardTsnChunk {
-
   SctpChunkCommon common;
   uint32_t new_cumulative_tsn;
   uint16_t stream_number;
@@ -70,10 +76,7 @@ typedef struct SctpForwardTsnChunk {
 
 } SctpForwardTsnChunk;
 
-
-
 typedef struct SctpHeader {
-
   uint16_t source_port;
   uint16_t destination_port;
   uint32_t verification_tag;
@@ -82,14 +85,12 @@ typedef struct SctpHeader {
 } SctpHeader;
 
 typedef struct SctpPacket {
-
   SctpHeader header;
   uint8_t chunks[0];
 
 } SctpPacket;
 
 typedef struct SctpSackChunk {
-
   SctpChunkCommon common;
   uint32_t cumulative_tsn_ack;
   uint32_t a_rwnd;
@@ -100,12 +101,11 @@ typedef struct SctpSackChunk {
 } SctpSackChunk;
 
 typedef struct SctpDataChunk {
-
   uint8_t type;
   uint8_t iube;
   uint16_t length;
   uint32_t tsn;
-  uint16_t si;
+  uint16_t sid;
   uint16_t sqn;
   uint32_t ppid;
   uint8_t data[0];
@@ -113,7 +113,6 @@ typedef struct SctpDataChunk {
 } SctpDataChunk;
 
 typedef struct SctpInitChunk {
-
   SctpChunkCommon common;
   uint32_t initiate_tag;
   uint32_t a_rwnd;
@@ -123,6 +122,11 @@ typedef struct SctpInitChunk {
   SctpChunkParam param[0];
 
 } SctpInitChunk;
+
+typedef struct SctpCookieEchoChunk {
+  SctpChunkCommon common;
+  uint8_t cookie[0];
+} SctpCookieEchoChunk;
 
 #endif
 
@@ -136,45 +140,52 @@ typedef enum SctpDataPpid {
 
 } SctpDataPpid;
 
-typedef struct Sctp Sctp;
+#define SCTP_MAX_STREAMS 5
+
+typedef struct {
+  char label[32];  // Stream label
+  uint16_t sid;    // Stream ID
+} SctpStreamEntry;
 
 typedef struct Sctp {
-
-  struct socket *sock;
+  struct socket* sock;
 
   int local_port;
   int remote_port;
   int connected;
   uint32_t verification_tag;
   uint32_t tsn;
-  DtlsSrtp *dtls_srtp;
-  Buffer **data_rb;
-  /* datachannel */
-  void (*onmessasge)(char *msg, size_t len, void *userdata);
-  void (*onopen)(void *userdata);
-  void (*onclose)(void *userdata);
+  DtlsSrtp* dtls_srtp;
+  int stream_count;
+  SctpStreamEntry stream_table[SCTP_MAX_STREAMS];
 
-  void *userdata;
+  /* datachannel */
+  void (*onmessage)(char* msg, size_t len, void* userdata, uint16_t sid);
+  void (*onopen)(void* userdata);
+  void (*onclose)(void* userdata);
+
+  void* userdata;
   uint8_t buf[CONFIG_MTU];
 } Sctp;
 
+int sctp_create_association(Sctp* sctp, DtlsSrtp* dtls_srtp);
 
-Sctp* sctp_create(DtlsSrtp *dtls_srtp);
+void sctp_destroy_association(Sctp* sctp);
 
-void sctp_destroy(Sctp *sctp);
+void sctp_usrsctp_init();
 
-int sctp_create_socket(Sctp *sctp, DtlsSrtp *dtls_srtp);
+void sctp_usrsctp_deinit();
 
-int sctp_is_connected(Sctp *sctp);
+int sctp_is_connected(Sctp* sctp);
 
-void sctp_incoming_data(Sctp *sctp, char *buf, size_t len);
+void sctp_incoming_data(Sctp* sctp, char* buf, size_t len);
 
-int sctp_outgoing_data(Sctp *sctp, char *buf, size_t len, SctpDataPpid ppid);
+int sctp_outgoing_data(Sctp* sctp, char* buf, size_t len, SctpDataPpid ppid, uint16_t sid);
 
-void sctp_onmessage(Sctp *sctp, void (*onmessasge)(char *msg, size_t len, void *userdata));
+void sctp_onmessage(Sctp* sctp, void (*onmessage)(char* msg, size_t len, void* userdata, uint16_t sid));
 
-void sctp_onopen(Sctp *sctp, void (*onopen)(void *userdata));
+void sctp_onopen(Sctp* sctp, void (*onopen)(void* userdata));
 
-void sctp_onclose(Sctp *sctp, void (*onclose)(void *userdata));
+void sctp_onclose(Sctp* sctp, void (*onclose)(void* userdata));
 
-#endif // SCTP_H_
+#endif  // SCTP_H_
